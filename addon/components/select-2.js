@@ -314,17 +314,16 @@ var Select2Component = Ember.Component.extend({
               break;
             }
           }
-        } else {
-          // ...or flat data structure: try to match simple item
-          matchIndex = values.indexOf("" + get(item, optionValuePath));
-          if (matchIndex !== -1) {
-            filteredContent[matchIndex] = item;
-            unmatchedValues--;
-          }
-          // break loop if all values are found
-          if (unmatchedValues === 0) {
-            break;
-          }
+        }
+        // ...or flat data structure: try to match simple item
+        matchIndex = values.indexOf("" + get(item, optionValuePath));
+        if (matchIndex !== -1) {
+          filteredContent[matchIndex] = item;
+          unmatchedValues--;
+        }
+        // break loop if all values are found
+        if (unmatchedValues === 0) {
+          break;
         }
       }
       // END loop over content
