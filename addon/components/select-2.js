@@ -27,7 +27,7 @@ var Select2Component = Ember.Component.extend({
   classNames: ["form-control"],
   classNameBindings: ["inputSize"],
   attributeBindings: ["style"],
-  style: "display: hidden;",
+  style: Ember.Handlebars.SafeString("display: hidden;"),
 
   // Bindings that may be overwritten in the template
   inputSize: "input-md",
@@ -154,12 +154,24 @@ var Select2Component = Ember.Component.extend({
 
         self.sendAction('query', query, deferred);
 
-        deferred.promise.then(function(data) {
-          if (data instanceof Ember.ArrayProxy) {
-            data = data.toArray();
+        deferred.promise.then(function(result) {
+          var data = result;
+          var more = false;
+
+          if (result instanceof Ember.ArrayProxy) {
+            data = result.toArray();
+          } else if (!Array.isArray(result)) {
+            if (result.data instanceof Ember.ArrayProxy) {
+              data = result.data.toArray();
+            } else {
+              data = result.data;
+            }
+            more = result.more;
           }
+
           query.callback({
-            results: data
+            results: data,
+            more: more
           });
         }, function(reason) {
           query.callback({
@@ -302,17 +314,16 @@ var Select2Component = Ember.Component.extend({
               break;
             }
           }
-        } else {
-          // ...or flat data structure: try to match simple item
-          matchIndex = values.indexOf("" + get(item, optionValuePath));
-          if (matchIndex !== -1) {
-            filteredContent[matchIndex] = item;
-            unmatchedValues--;
-          }
-          // break loop if all values are found
-          if (unmatchedValues === 0) {
-            break;
-          }
+        }
+        // ...or flat data structure: try to match simple item
+        matchIndex = values.indexOf("" + get(item, optionValuePath));
+        if (matchIndex !== -1) {
+          filteredContent[matchIndex] = item;
+          unmatchedValues--;
+        }
+        // break loop if all values are found
+        if (unmatchedValues === 0) {
+          break;
         }
       }
       // END loop over content
@@ -433,7 +444,7 @@ var Select2Component = Ember.Component.extend({
 
     this.set("value", value);
     Ember.run.schedule('actions', this, function() {
-      this.sendAction('didSelect');
+      this.sendAction('didSelect', value, this);
     });
   },
 

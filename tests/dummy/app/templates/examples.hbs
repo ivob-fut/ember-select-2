@@ -76,7 +76,7 @@
 
   <div class="col-sm-6">
     <h4>Multiple Selection w/ Value Binding</h4>
-    <p>Maybe you only need the pizza Ids. Specify a path in <code>optionValuePath</code> and your're good to go.</p>
+    <p>Maybe you only need the pizza Ids. Specify a path in <code>optionValuePath</code> and you're good to go.</p>
     <div class="example-box">
       <p>Your Pizza Ids: {{favouritePizzaIds}}</p>
       {{select-2
@@ -210,7 +210,7 @@
 <hr/>
 
 <h3>Typeahead & Ajax Queries</h3>
-<p>Image you sell so many pizzas that you don't want to send all of them to the client. Instead, there is a protocoll that lets the neares controller figure out which options to show for a given search term, asynchronously.</p>
+<p>Imagine you sell so many pizzas that you don't want to send all of them to the client. Instead, there is a protocol that lets the nearest controller figure out which options to show for a given search term, asynchronously.</p>
 <p>Typeahead is currently only possible for Full Object Binding, because when using an <code>optionValuePath</code>, there is no API to retrieve the full object from the controller.</p>
 <div class="row">
   <div class="col-sm-6">
@@ -258,11 +258,61 @@
   </div>
 </div>
 
+<h3>Infinite Scroll with Typeahead & Ajax Queries</h3>
+<p>Imagine you sell so many pizzas that you don't want to send all of them to the client, and using Typeahead doesn't give you a large enough filter. You can implement infinite scroll using the <code>more</code> property</p>
+<div class="row">
+  <div class="col-sm-6">
+    <h4>The Component</h4>
+    <div class="example-box">
+      <p>The component is exactly the same as the regular Typeahead and Ajax query from above</p>
+      {{select-2
+          placeholder="Choose from our many pizzas"
+          value=chosenTypeaheadPizza
+          typeaheadSearchingText="Searching pizzas"
+          typeaheadNoMatchesText="No pizzas found for '%@'"
+          typeaheadErrorText="Loading failed: %@"
+          minimumInputLength=3
+          maximumInputLength=10
+          query="queryInfiniteScrollPizzas"
+      }}
+    </div>
+    {{#highlight-code lang=".hbs"}}\{{select-2
+    placeholder="Choose from our many pizzas"
+    value=chosenTypeaheadPizza
+    typeaheadSearchingText="Searching pizzas"
+    typeaheadNoMatchesText="No pizzas found for '%@'"
+    typeaheadErrorText="Loading failed: %@"
+    minimumInputLength=3
+    maximumInputLength=10
+    query="queryPizzas"
+}}{{/highlight-code}}
+  </div>
+  <div class="col-sm-6">
+    <h4>The Controller</h4>
+    <div class="example-box">
+      <p>There are a few minor changes from the regular Typeahead and Ajax query from above.
+      <p>Instead of sending in deferred.resolve as the callback, you need to implement your own callback and call deferred.resolve with the data that was returned and more property</p>
+      <p>Implement <code>more: true</code> when there is still more data to load, and <code>more: false</code> when the server has responded with all the data and there is nothing to load.</p>
+    </div>
+    {{#highlight-code lang=".js"}}Ember.Controller.extend({
+  actions: {
+    queryPizzas: function(query, deferred) {
+      this.store.find('myModel', { name: query.term })
+        .then(function(data) {
+          //'when everything has been loaded, specify more: false'
+          deferred.resolve({data: data, more: true});
+        }, deferred.reject);
+    }
+  }
+});{{/highlight-code}}
+  </div>
+</div>
+
 <h3>Miscellaneous</h3>
 <div class="row">
   <div class="col-sm-6">
     <h4>Hierarchical JSON</h4>
-    <p>select2 works out of the box when given hierarchical JSON as input. Notice the <code>children</code> attribute.</p>
+    <p>select-2 works out of the box when given hierarchical JSON as input. Notice the <code>children</code> attribute.</p>
     <div class="example-box">
       {{select-2
           content=ingredients
