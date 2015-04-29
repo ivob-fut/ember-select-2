@@ -117,7 +117,7 @@ var runningTests = false;
 })();
 
 ;/*!
- * jQuery JavaScript Library v1.11.1
+ * jQuery JavaScript Library v1.11.3
  * http://jquery.com/
  *
  * Includes Sizzle.js
@@ -127,7 +127,7 @@ var runningTests = false;
  * Released under the MIT license
  * http://jquery.org/license
  *
- * Date: 2014-05-01T17:42Z
+ * Date: 2015-04-28T16:19Z
  */
 
 (function( global, factory ) {
@@ -182,7 +182,7 @@ var support = {};
 
 
 var
-	version = "1.11.1",
+	version = "1.11.3",
 
 	// Define a local copy of jQuery
 	jQuery = function( selector, context ) {
@@ -387,7 +387,8 @@ jQuery.extend({
 		// parseFloat NaNs numeric-cast false positives (null|true|false|"")
 		// ...but misinterprets leading-number strings, particularly hex literals ("0x...")
 		// subtraction forces infinities to NaN
-		return !jQuery.isArray( obj ) && obj - parseFloat( obj ) >= 0;
+		// adding 1 corrects loss of precision from parseFloat (#15100)
+		return !jQuery.isArray( obj ) && (obj - parseFloat( obj ) + 1) >= 0;
 	},
 
 	isEmptyObject: function( obj ) {
@@ -686,7 +687,12 @@ jQuery.each("Boolean Number String Function Array Date RegExp Object Error".spli
 });
 
 function isArraylike( obj ) {
-	var length = obj.length,
+
+	// Support: iOS 8.2 (not reproducible in simulator)
+	// `in` check used to prevent JIT error (gh-2145)
+	// hasOwn isn't used here due to false negatives
+	// regarding Nodelist length in IE
+	var length = "length" in obj && obj.length,
 		type = jQuery.type( obj );
 
 	if ( type === "function" || jQuery.isWindow( obj ) ) {
@@ -702,14 +708,14 @@ function isArraylike( obj ) {
 }
 var Sizzle =
 /*!
- * Sizzle CSS Selector Engine v1.10.19
+ * Sizzle CSS Selector Engine v2.2.0-pre
  * http://sizzlejs.com/
  *
- * Copyright 2013 jQuery Foundation, Inc. and other contributors
+ * Copyright 2008, 2014 jQuery Foundation, Inc. and other contributors
  * Released under the MIT license
  * http://jquery.org/license
  *
- * Date: 2014-04-18
+ * Date: 2014-12-16
  */
 (function( window ) {
 
@@ -736,7 +742,7 @@ var i,
 	contains,
 
 	// Instance-specific data
-	expando = "sizzle" + -(new Date()),
+	expando = "sizzle" + 1 * new Date(),
 	preferredDoc = window.document,
 	dirruns = 0,
 	done = 0,
@@ -751,7 +757,6 @@ var i,
 	},
 
 	// General-purpose constants
-	strundefined = typeof undefined,
 	MAX_NEGATIVE = 1 << 31,
 
 	// Instance methods
@@ -761,12 +766,13 @@ var i,
 	push_native = arr.push,
 	push = arr.push,
 	slice = arr.slice,
-	// Use a stripped-down indexOf if we can't use a native one
-	indexOf = arr.indexOf || function( elem ) {
+	// Use a stripped-down indexOf as it's faster than native
+	// http://jsperf.com/thor-indexof-vs-for/5
+	indexOf = function( list, elem ) {
 		var i = 0,
-			len = this.length;
+			len = list.length;
 		for ( ; i < len; i++ ) {
-			if ( this[i] === elem ) {
+			if ( list[i] === elem ) {
 				return i;
 			}
 		}
@@ -806,6 +812,7 @@ var i,
 		")\\)|)",
 
 	// Leading and non-escaped trailing whitespace, capturing some non-whitespace characters preceding the latter
+	rwhitespace = new RegExp( whitespace + "+", "g" ),
 	rtrim = new RegExp( "^" + whitespace + "+|((?:^|[^\\\\])(?:\\\\.)*)" + whitespace + "+$", "g" ),
 
 	rcomma = new RegExp( "^" + whitespace + "*," + whitespace + "*" ),
@@ -857,6 +864,14 @@ var i,
 				String.fromCharCode( high + 0x10000 ) :
 				// Supplemental Plane codepoint (surrogate pair)
 				String.fromCharCode( high >> 10 | 0xD800, high & 0x3FF | 0xDC00 );
+	},
+
+	// Used for iframes
+	// See setDocument()
+	// Removing the function wrapper causes a "Permission Denied"
+	// error in IE
+	unloadHandler = function() {
+		setDocument();
 	};
 
 // Optimize for push.apply( _, NodeList )
@@ -899,19 +914,18 @@ function Sizzle( selector, context, results, seed ) {
 
 	context = context || document;
 	results = results || [];
+	nodeType = context.nodeType;
 
-	if ( !selector || typeof selector !== "string" ) {
+	if ( typeof selector !== "string" || !selector ||
+		nodeType !== 1 && nodeType !== 9 && nodeType !== 11 ) {
+
 		return results;
 	}
 
-	if ( (nodeType = context.nodeType) !== 1 && nodeType !== 9 ) {
-		return [];
-	}
+	if ( !seed && documentIsHTML ) {
 
-	if ( documentIsHTML && !seed ) {
-
-		// Shortcuts
-		if ( (match = rquickExpr.exec( selector )) ) {
+		// Try to shortcut find operations when possible (e.g., not under DocumentFragment)
+		if ( nodeType !== 11 && (match = rquickExpr.exec( selector )) ) {
 			// Speed-up: Sizzle("#ID")
 			if ( (m = match[1]) ) {
 				if ( nodeType === 9 ) {
@@ -943,7 +957,7 @@ function Sizzle( selector, context, results, seed ) {
 				return results;
 
 			// Speed-up: Sizzle(".CLASS")
-			} else if ( (m = match[3]) && support.getElementsByClassName && context.getElementsByClassName ) {
+			} else if ( (m = match[3]) && support.getElementsByClassName ) {
 				push.apply( results, context.getElementsByClassName( m ) );
 				return results;
 			}
@@ -953,7 +967,7 @@ function Sizzle( selector, context, results, seed ) {
 		if ( support.qsa && (!rbuggyQSA || !rbuggyQSA.test( selector )) ) {
 			nid = old = expando;
 			newContext = context;
-			newSelector = nodeType === 9 && selector;
+			newSelector = nodeType !== 1 && selector;
 
 			// qSA works strangely on Element-rooted queries
 			// We can work around this by specifying an extra ID on the root
@@ -1140,7 +1154,7 @@ function createPositionalPseudo( fn ) {
  * @returns {Element|Object|Boolean} The input node if acceptable, otherwise a falsy value
  */
 function testContext( context ) {
-	return context && typeof context.getElementsByTagName !== strundefined && context;
+	return context && typeof context.getElementsByTagName !== "undefined" && context;
 }
 
 // Expose support vars for convenience
@@ -1164,9 +1178,8 @@ isXML = Sizzle.isXML = function( elem ) {
  * @returns {Object} Returns the current document
  */
 setDocument = Sizzle.setDocument = function( node ) {
-	var hasCompare,
-		doc = node ? node.ownerDocument || node : preferredDoc,
-		parent = doc.defaultView;
+	var hasCompare, parent,
+		doc = node ? node.ownerDocument || node : preferredDoc;
 
 	// If no document and documentElement is available, return
 	if ( doc === document || doc.nodeType !== 9 || !doc.documentElement ) {
@@ -1176,9 +1189,7 @@ setDocument = Sizzle.setDocument = function( node ) {
 	// Set our document
 	document = doc;
 	docElem = doc.documentElement;
-
-	// Support tests
-	documentIsHTML = !isXML( doc );
+	parent = doc.defaultView;
 
 	// Support: IE>8
 	// If iframe document is assigned to "document" variable and if iframe has been reloaded,
@@ -1187,21 +1198,22 @@ setDocument = Sizzle.setDocument = function( node ) {
 	if ( parent && parent !== parent.top ) {
 		// IE11 does not have attachEvent, so all must suffer
 		if ( parent.addEventListener ) {
-			parent.addEventListener( "unload", function() {
-				setDocument();
-			}, false );
+			parent.addEventListener( "unload", unloadHandler, false );
 		} else if ( parent.attachEvent ) {
-			parent.attachEvent( "onunload", function() {
-				setDocument();
-			});
+			parent.attachEvent( "onunload", unloadHandler );
 		}
 	}
+
+	/* Support tests
+	---------------------------------------------------------------------- */
+	documentIsHTML = !isXML( doc );
 
 	/* Attributes
 	---------------------------------------------------------------------- */
 
 	// Support: IE<8
-	// Verify that getAttribute really returns attributes and not properties (excepting IE8 booleans)
+	// Verify that getAttribute really returns attributes and not properties
+	// (excepting IE8 booleans)
 	support.attributes = assert(function( div ) {
 		div.className = "i";
 		return !div.getAttribute("className");
@@ -1216,17 +1228,8 @@ setDocument = Sizzle.setDocument = function( node ) {
 		return !div.getElementsByTagName("*").length;
 	});
 
-	// Check if getElementsByClassName can be trusted
-	support.getElementsByClassName = rnative.test( doc.getElementsByClassName ) && assert(function( div ) {
-		div.innerHTML = "<div class='a'></div><div class='a i'></div>";
-
-		// Support: Safari<4
-		// Catch class over-caching
-		div.firstChild.className = "i";
-		// Support: Opera<10
-		// Catch gEBCN failure to find non-leading classes
-		return div.getElementsByClassName("i").length === 2;
-	});
+	// Support: IE<9
+	support.getElementsByClassName = rnative.test( doc.getElementsByClassName );
 
 	// Support: IE<10
 	// Check if getElementById returns elements by name
@@ -1240,7 +1243,7 @@ setDocument = Sizzle.setDocument = function( node ) {
 	// ID find and filter
 	if ( support.getById ) {
 		Expr.find["ID"] = function( id, context ) {
-			if ( typeof context.getElementById !== strundefined && documentIsHTML ) {
+			if ( typeof context.getElementById !== "undefined" && documentIsHTML ) {
 				var m = context.getElementById( id );
 				// Check parentNode to catch when Blackberry 4.6 returns
 				// nodes that are no longer in the document #6963
@@ -1261,7 +1264,7 @@ setDocument = Sizzle.setDocument = function( node ) {
 		Expr.filter["ID"] =  function( id ) {
 			var attrId = id.replace( runescape, funescape );
 			return function( elem ) {
-				var node = typeof elem.getAttributeNode !== strundefined && elem.getAttributeNode("id");
+				var node = typeof elem.getAttributeNode !== "undefined" && elem.getAttributeNode("id");
 				return node && node.value === attrId;
 			};
 		};
@@ -1270,14 +1273,20 @@ setDocument = Sizzle.setDocument = function( node ) {
 	// Tag
 	Expr.find["TAG"] = support.getElementsByTagName ?
 		function( tag, context ) {
-			if ( typeof context.getElementsByTagName !== strundefined ) {
+			if ( typeof context.getElementsByTagName !== "undefined" ) {
 				return context.getElementsByTagName( tag );
+
+			// DocumentFragment nodes don't have gEBTN
+			} else if ( support.qsa ) {
+				return context.querySelectorAll( tag );
 			}
 		} :
+
 		function( tag, context ) {
 			var elem,
 				tmp = [],
 				i = 0,
+				// By happy coincidence, a (broken) gEBTN appears on DocumentFragment nodes too
 				results = context.getElementsByTagName( tag );
 
 			// Filter out possible comments
@@ -1295,7 +1304,7 @@ setDocument = Sizzle.setDocument = function( node ) {
 
 	// Class
 	Expr.find["CLASS"] = support.getElementsByClassName && function( className, context ) {
-		if ( typeof context.getElementsByClassName !== strundefined && documentIsHTML ) {
+		if ( documentIsHTML ) {
 			return context.getElementsByClassName( className );
 		}
 	};
@@ -1324,13 +1333,15 @@ setDocument = Sizzle.setDocument = function( node ) {
 			// setting a boolean content attribute,
 			// since its presence should be enough
 			// http://bugs.jquery.com/ticket/12359
-			div.innerHTML = "<select msallowclip=''><option selected=''></option></select>";
+			docElem.appendChild( div ).innerHTML = "<a id='" + expando + "'></a>" +
+				"<select id='" + expando + "-\f]' msallowcapture=''>" +
+				"<option selected=''></option></select>";
 
 			// Support: IE8, Opera 11-12.16
 			// Nothing should be selected when empty strings follow ^= or $= or *=
 			// The test attribute must be unknown in Opera but "safe" for WinRT
 			// http://msdn.microsoft.com/en-us/library/ie/hh465388.aspx#attribute_section
-			if ( div.querySelectorAll("[msallowclip^='']").length ) {
+			if ( div.querySelectorAll("[msallowcapture^='']").length ) {
 				rbuggyQSA.push( "[*^$]=" + whitespace + "*(?:''|\"\")" );
 			}
 
@@ -1340,11 +1351,23 @@ setDocument = Sizzle.setDocument = function( node ) {
 				rbuggyQSA.push( "\\[" + whitespace + "*(?:value|" + booleans + ")" );
 			}
 
+			// Support: Chrome<29, Android<4.2+, Safari<7.0+, iOS<7.0+, PhantomJS<1.9.7+
+			if ( !div.querySelectorAll( "[id~=" + expando + "-]" ).length ) {
+				rbuggyQSA.push("~=");
+			}
+
 			// Webkit/Opera - :checked should return selected option elements
 			// http://www.w3.org/TR/2011/REC-css3-selectors-20110929/#checked
 			// IE8 throws error here and will not see later tests
 			if ( !div.querySelectorAll(":checked").length ) {
 				rbuggyQSA.push(":checked");
+			}
+
+			// Support: Safari 8+, iOS 8+
+			// https://bugs.webkit.org/show_bug.cgi?id=136851
+			// In-page `selector#id sibing-combinator selector` fails
+			if ( !div.querySelectorAll( "a#" + expando + "+*" ).length ) {
+				rbuggyQSA.push(".#.+[+~]");
 			}
 		});
 
@@ -1462,7 +1485,7 @@ setDocument = Sizzle.setDocument = function( node ) {
 
 			// Maintain original order
 			return sortInput ?
-				( indexOf.call( sortInput, a ) - indexOf.call( sortInput, b ) ) :
+				( indexOf( sortInput, a ) - indexOf( sortInput, b ) ) :
 				0;
 		}
 
@@ -1489,7 +1512,7 @@ setDocument = Sizzle.setDocument = function( node ) {
 				aup ? -1 :
 				bup ? 1 :
 				sortInput ?
-				( indexOf.call( sortInput, a ) - indexOf.call( sortInput, b ) ) :
+				( indexOf( sortInput, a ) - indexOf( sortInput, b ) ) :
 				0;
 
 		// If the nodes are siblings, we can do a quick check
@@ -1552,7 +1575,7 @@ Sizzle.matchesSelector = function( elem, expr ) {
 					elem.document && elem.document.nodeType !== 11 ) {
 				return ret;
 			}
-		} catch(e) {}
+		} catch (e) {}
 	}
 
 	return Sizzle( expr, document, null, [ elem ] ).length > 0;
@@ -1771,7 +1794,7 @@ Expr = Sizzle.selectors = {
 			return pattern ||
 				(pattern = new RegExp( "(^|" + whitespace + ")" + className + "(" + whitespace + "|$)" )) &&
 				classCache( className, function( elem ) {
-					return pattern.test( typeof elem.className === "string" && elem.className || typeof elem.getAttribute !== strundefined && elem.getAttribute("class") || "" );
+					return pattern.test( typeof elem.className === "string" && elem.className || typeof elem.getAttribute !== "undefined" && elem.getAttribute("class") || "" );
 				});
 		},
 
@@ -1793,7 +1816,7 @@ Expr = Sizzle.selectors = {
 					operator === "^=" ? check && result.indexOf( check ) === 0 :
 					operator === "*=" ? check && result.indexOf( check ) > -1 :
 					operator === "$=" ? check && result.slice( -check.length ) === check :
-					operator === "~=" ? ( " " + result + " " ).indexOf( check ) > -1 :
+					operator === "~=" ? ( " " + result.replace( rwhitespace, " " ) + " " ).indexOf( check ) > -1 :
 					operator === "|=" ? result === check || result.slice( 0, check.length + 1 ) === check + "-" :
 					false;
 			};
@@ -1913,7 +1936,7 @@ Expr = Sizzle.selectors = {
 							matched = fn( seed, argument ),
 							i = matched.length;
 						while ( i-- ) {
-							idx = indexOf.call( seed, matched[i] );
+							idx = indexOf( seed, matched[i] );
 							seed[ idx ] = !( matches[ idx ] = matched[i] );
 						}
 					}) :
@@ -1952,6 +1975,8 @@ Expr = Sizzle.selectors = {
 				function( elem, context, xml ) {
 					input[0] = elem;
 					matcher( input, null, xml, results );
+					// Don't keep the element (issue #299)
+					input[0] = null;
 					return !results.pop();
 				};
 		}),
@@ -1963,6 +1988,7 @@ Expr = Sizzle.selectors = {
 		}),
 
 		"contains": markFunction(function( text ) {
+			text = text.replace( runescape, funescape );
 			return function( elem ) {
 				return ( elem.textContent || elem.innerText || getText( elem ) ).indexOf( text ) > -1;
 			};
@@ -2384,7 +2410,7 @@ function setMatcher( preFilter, selector, matcher, postFilter, postFinder, postS
 				i = matcherOut.length;
 				while ( i-- ) {
 					if ( (elem = matcherOut[i]) &&
-						(temp = postFinder ? indexOf.call( seed, elem ) : preMap[i]) > -1 ) {
+						(temp = postFinder ? indexOf( seed, elem ) : preMap[i]) > -1 ) {
 
 						seed[temp] = !(results[temp] = elem);
 					}
@@ -2419,13 +2445,16 @@ function matcherFromTokens( tokens ) {
 			return elem === checkContext;
 		}, implicitRelative, true ),
 		matchAnyContext = addCombinator( function( elem ) {
-			return indexOf.call( checkContext, elem ) > -1;
+			return indexOf( checkContext, elem ) > -1;
 		}, implicitRelative, true ),
 		matchers = [ function( elem, context, xml ) {
-			return ( !leadingRelative && ( xml || context !== outermostContext ) ) || (
+			var ret = ( !leadingRelative && ( xml || context !== outermostContext ) ) || (
 				(checkContext = context).nodeType ?
 					matchContext( elem, context, xml ) :
 					matchAnyContext( elem, context, xml ) );
+			// Avoid hanging onto element (issue #299)
+			checkContext = null;
+			return ret;
 		} ];
 
 	for ( ; i < len; i++ ) {
@@ -2675,7 +2704,7 @@ select = Sizzle.select = function( selector, context, results, seed ) {
 // Sort stability
 support.sortStable = expando.split("").sort( sortOrder ).join("") === expando;
 
-// Support: Chrome<14
+// Support: Chrome 14-35+
 // Always assume duplicates if they aren't passed to the comparison function
 support.detectDuplicates = !!hasDuplicate;
 
@@ -6233,7 +6262,14 @@ var getStyles, curCSS,
 
 if ( window.getComputedStyle ) {
 	getStyles = function( elem ) {
-		return elem.ownerDocument.defaultView.getComputedStyle( elem, null );
+		// Support: IE<=11+, Firefox<=30+ (#15098, #14150)
+		// IE throws on elements created in popups
+		// FF meanwhile throws on frame elements through "defaultView.getComputedStyle"
+		if ( elem.ownerDocument.defaultView.opener ) {
+			return elem.ownerDocument.defaultView.getComputedStyle( elem, null );
+		}
+
+		return window.getComputedStyle( elem, null );
 	};
 
 	curCSS = function( elem, name, computed ) {
@@ -6481,6 +6517,8 @@ function addGetHookIf( conditionFn, hookFn ) {
 
 			reliableMarginRightVal =
 				!parseFloat( ( window.getComputedStyle( contents, null ) || {} ).marginRight );
+
+			div.removeChild( contents );
 		}
 
 		// Support: IE8
@@ -9188,7 +9226,8 @@ jQuery.extend({
 		}
 
 		// We can fire global events as of now if asked to
-		fireGlobals = s.global;
+		// Don't fire events if jQuery.event is undefined in an AMD-usage scenario (#15118)
+		fireGlobals = jQuery.event && s.global;
 
 		// Watch for a new set of requests
 		if ( fireGlobals && jQuery.active++ === 0 ) {
@@ -9447,13 +9486,6 @@ jQuery.each( [ "get", "post" ], function( i, method ) {
 	};
 });
 
-// Attach a bunch of functions for handling common AJAX events
-jQuery.each( [ "ajaxStart", "ajaxStop", "ajaxComplete", "ajaxError", "ajaxSuccess", "ajaxSend" ], function( i, type ) {
-	jQuery.fn[ type ] = function( fn ) {
-		return this.on( type, fn );
-	};
-});
-
 
 jQuery._evalUrl = function( url ) {
 	return jQuery.ajax({
@@ -9679,8 +9711,9 @@ var xhrId = 0,
 
 // Support: IE<10
 // Open requests must be manually aborted on unload (#5280)
-if ( window.ActiveXObject ) {
-	jQuery( window ).on( "unload", function() {
+// See https://support.microsoft.com/kb/2856746 for more info
+if ( window.attachEvent ) {
+	window.attachEvent( "onunload", function() {
 		for ( var key in xhrCallbacks ) {
 			xhrCallbacks[ key ]( undefined, true );
 		}
@@ -10110,6 +10143,16 @@ jQuery.fn.load = function( url, params, callback ) {
 
 	return this;
 };
+
+
+
+
+// Attach a bunch of functions for handling common AJAX events
+jQuery.each( [ "ajaxStart", "ajaxStop", "ajaxComplete", "ajaxError", "ajaxSuccess", "ajaxSend" ], function( i, type ) {
+	jQuery.fn[ type ] = function( fn ) {
+		return this.on( type, fn );
+	};
+});
 
 
 
@@ -62907,15 +62950,28 @@ define("ember/resolver",
 
     if (fullName.parsedName === true) { return fullName; }
 
-    var nameParts = fullName.split(":"),
-        type = nameParts[0], fullNameWithoutType = nameParts[1],
-        name = fullNameWithoutType,
-        namespace = get(this, 'namespace'),
-        root = namespace;
+    var prefixParts = fullName.split('@');
+    var prefix;
+
+    if (prefixParts.length === 2) {
+      if (prefixParts[0].split(':')[0] === 'view') {
+        prefixParts[0] = prefixParts[0].split(':')[1];
+        prefixParts[1] = 'view:' + prefixParts[1];
+      }
+
+      prefix = prefixParts[0];
+    }
+
+    var nameParts = prefixParts[prefixParts.length - 1].split(":");
+    var type = nameParts[0], fullNameWithoutType = nameParts[1];
+    var name = fullNameWithoutType;
+    var namespace = get(this, 'namespace');
+    var root = namespace;
 
     return {
       parsedName: true,
       fullName: fullName,
+      prefix: prefix || this.prefix({type: type}),
       type: type,
       fullNameWithoutType: fullNameWithoutType,
       name: name,
@@ -62924,39 +62980,23 @@ define("ember/resolver",
     };
   }
 
-  function chooseModuleName(moduleEntries, moduleName) {
-    var underscoredModuleName = Ember.String.underscore(moduleName);
-
-    if (moduleName !== underscoredModuleName && moduleEntries[moduleName] && moduleEntries[underscoredModuleName]) {
-      throw new TypeError("Ambiguous module names: `" + moduleName + "` and `" + underscoredModuleName + "`");
-    }
-
-    if (moduleEntries[moduleName]) {
-      return moduleName;
-    } else if (moduleEntries[underscoredModuleName]) {
-      return underscoredModuleName;
-    } else {
-      // workaround for dasherized partials:
-      // something/something/-something => something/something/_something
-      var partializedModuleName = moduleName.replace(/\/-([^\/]*)$/, '/_$1');
-
-      if (moduleEntries[partializedModuleName]) {
-        Ember.deprecate('Modules should not contain underscores. ' +
-                        'Attempted to lookup "'+moduleName+'" which ' +
-                        'was not found. Please rename "'+partializedModuleName+'" '+
-                        'to "'+moduleName+'" instead.', false);
-
-        return partializedModuleName;
-      } else {
-        return moduleName;
-      }
-    }
-  }
-
   function resolveOther(parsedName) {
     /*jshint validthis:true */
+    
+    // Temporarily disabling podModulePrefix deprecation
+    /*
+    if (!this._deprecatedPodModulePrefix) {
+      var podModulePrefix = this.namespace.podModulePrefix || '';
+      var podPath = podModulePrefix.substr(podModulePrefix.lastIndexOf('/') + 1);
 
-    Ember.assert('module prefix must be defined', this.namespace.modulePrefix);
+      Ember.deprecate('`podModulePrefix` is deprecated and will be removed '+
+        'from future versions of ember-cli. Please move existing pods from '+
+        '\'app/' + podPath + '/\' to \'app/\'.', !this.namespace.podModulePrefix);
+
+      this._deprecatedPodModulePrefix = true;
+    }
+    */
+    Ember.assert('`modulePrefix` must be defined', this.namespace.modulePrefix);
 
     var normalizedModuleName = this.findModuleName(parsedName);
 
@@ -62994,6 +63034,7 @@ define("ember/resolver",
     },
     init: function() {
       this._super();
+      this.moduleBasedResolver = true;
       this._normalizeCache = makeDictionary();
 
       this.pluralizedTypes = this.pluralizedTypes || makeDictionary();
@@ -63001,6 +63042,8 @@ define("ember/resolver",
       if (!this.pluralizedTypes.config) {
         this.pluralizedTypes.config = 'config';
       }
+
+      this._deprecatedPodModulePrefix = false;
     },
     normalize: function(fullName) {
       return this._normalizeCache[fullName] || (this._normalizeCache[fullName] = this._normalize(fullName));
@@ -63049,7 +63092,7 @@ define("ember/resolver",
 
     mainModuleName: function(parsedName) {
       // if router:main or adapter:main look for a module with just the type first
-      var tmpModuleName = this.prefix(parsedName) + '/' + parsedName.type;
+      var tmpModuleName = parsedName.prefix + '/' + parsedName.type;
 
       if (parsedName.fullNameWithoutType === 'main') {
         return tmpModuleName;
@@ -63057,7 +63100,7 @@ define("ember/resolver",
     },
 
     defaultModuleName: function(parsedName) {
-      return this.prefix(parsedName) + '/' +  this.pluralize(parsedName.type) + '/' + parsedName.fullNameWithoutType;
+      return parsedName.prefix + '/' +  this.pluralize(parsedName.type) + '/' + parsedName.fullNameWithoutType;
     },
 
     prefix: function(parsedName) {
@@ -63099,7 +63142,7 @@ define("ember/resolver",
         // allow treat all dashed and all underscored as the same thing
         // supports components with dashes and other stuff with underscores.
         if (tmpModuleName) {
-          tmpModuleName = chooseModuleName(moduleEntries, tmpModuleName);
+          tmpModuleName = self.chooseModuleName(moduleEntries, tmpModuleName);
         }
 
         if (tmpModuleName && moduleEntries[tmpModuleName]) {
@@ -63118,6 +63161,35 @@ define("ember/resolver",
       });
 
       return moduleName;
+    },
+
+    chooseModuleName: function(moduleEntries, moduleName) {
+      var underscoredModuleName = Ember.String.underscore(moduleName);
+
+      if (moduleName !== underscoredModuleName && moduleEntries[moduleName] && moduleEntries[underscoredModuleName]) {
+        throw new TypeError("Ambiguous module names: `" + moduleName + "` and `" + underscoredModuleName + "`");
+      }
+
+      if (moduleEntries[moduleName]) {
+        return moduleName;
+      } else if (moduleEntries[underscoredModuleName]) {
+        return underscoredModuleName;
+      } else {
+        // workaround for dasherized partials:
+        // something/something/-something => something/something/_something
+        var partializedModuleName = moduleName.replace(/\/-([^\/]*)$/, '/_$1');
+
+        if (moduleEntries[partializedModuleName]) {
+          Ember.deprecate('Modules should not contain underscores. ' +
+                          'Attempted to lookup "'+moduleName+'" which ' +
+                          'was not found. Please rename "'+partializedModuleName+'" '+
+                          'to "'+moduleName+'" instead.', false);
+
+          return partializedModuleName;
+        } else {
+          return moduleName;
+        }
+      }
     },
 
     // used by Ember.DefaultResolver.prototype._logLookup
@@ -63154,6 +63226,7 @@ define("ember/resolver",
     }
   });
 
+  Resolver.moduleBasedResolver = true;
   Resolver['default'] = Resolver;
   return Resolver;
 });
@@ -63223,6 +63296,17 @@ define("ember/container-debug-adapter",
     },
 
     /**
+     * Get all defined modules.
+     *
+     * @method _getEntries
+     * @return {Array} the list of registered modules.
+     * @private
+     */
+    _getEntries: function() {
+      return requirejs.entries;
+    },
+
+    /**
       Returns the available classes a given type.
 
       @method catalogEntriesByType
@@ -63230,7 +63314,7 @@ define("ember/container-debug-adapter",
       @return {Array} An array of classes.
     */
     catalogEntriesByType: function(type) {
-      var entries = requirejs.entries,
+      var entries = this._getEntries(),
           module,
           types = Ember.A();
 
@@ -63238,24 +63322,39 @@ define("ember/container-debug-adapter",
         return this.shortname;
       };
 
+      var prefix = this.namespace.modulePrefix;
+
       for(var key in entries) {
-        if(entries.hasOwnProperty(key) && key.indexOf(type) !== -1)
-        {
-          // // TODO return the name instead of the module itself
-          // module = require(key, null, null, true);
+        if(entries.hasOwnProperty(key) && key.indexOf(type) !== -1) {
+          // Check if it's a pod module
+          var name = getPod(type, key, this.namespace.podModulePrefix || prefix);
+          if (!name) {
+            // Not pod
+            name = key.split(type + 's/').pop();
 
-          // if (module && module['default']) { module = module['default']; }
-          // module.shortname = key.split(type +'s/').pop();
-          // module.toString = makeToString;
+            // Support for different prefix (such as ember-cli addons).
+            // Uncomment the code below when
+            // https://github.com/ember-cli/ember-resolver/pull/80 is merged.
 
-          // types.push(module);
-          types.push(key.split(type +'s/').pop());
+            //var match = key.match('^/?(.+)/' + type);
+            //if (match && match[1] !== prefix) {
+              // Different prefix such as an addon
+              //name = match[1] + '@' + name;
+            //}
+          }
+          types.addObject(name);
         }
       }
-
       return types;
     }
   });
+
+  function getPod(type, key, prefix) {
+    var match = key.match(new RegExp('^/?' + prefix + '/(.+)/' + type + '$'));
+    if (match) {
+      return match[1];
+    }
+  }
 
   ContainerDebugAdapter['default'] = ContainerDebugAdapter;
   return ContainerDebugAdapter;
@@ -63272,11 +63371,12 @@ define("ember/container-debug-adapter",
   Ember.Application.initializer({
     name: 'container-debug-adapter',
 
-    initialize: function(container) {
+    initialize: function(container, app) {
       var ContainerDebugAdapter = require('ember/container-debug-adapter');
       var Resolver = require('ember/resolver');
 
       container.register('container-debug-adapter:main', ContainerDebugAdapter);
+      app.inject('container-debug-adapter:main', 'namespace', 'application:main');
     }
   });
 }());
@@ -63392,9 +63492,9 @@ define("ember/load-initializers",
         var fixture = lookupFixture(settings.url);
         if (fixture) {
           if (fixture.textStatus === 'success' || fixture.textStatus == null) {
-            return Ember.run(null, resolve, fixture);
+            return Ember.run.later(null, resolve, fixture);
           } else {
-            return Ember.run(null, reject, fixture);
+            return Ember.run.later(null, reject, fixture);
           }
         }
         settings.success = makeSuccess(resolve);
@@ -76191,7 +76291,7 @@ define("ember-inflector/system/string",
 ;/*
 Copyright 2012 Igor Vaynberg
 
-Version: 3.5.1 Timestamp: Tue Jul 22 18:58:56 EDT 2014
+Version: 3.5.2 Timestamp: Sat Nov  1 14:43:36 EDT 2014
 
 This software is licensed under the Apache License, Version 2.0 (the "Apache License") or the GNU
 General Public License version 2 (the "GPL License"). You may choose either license to govern your
@@ -76236,7 +76336,7 @@ the specific language governing permissions and limitations under the Apache Lic
         return;
     }
 
-    var KEY, AbstractSelect2, SingleSelect2, MultiSelect2, nextUid, sizer,
+    var AbstractSelect2, SingleSelect2, MultiSelect2, nextUid, sizer,
         lastMousePosition={x:0,y:0}, $document, scrollBarDimensions,
 
     KEY = {
@@ -76322,7 +76422,7 @@ the specific language governing permissions and limitations under the Apache Lic
 
     function measureScrollbar () {
         var $template = $( MEASURE_SCROLLBAR_TEMPLATE );
-        $template.appendTo('body');
+        $template.appendTo(document.body);
 
         var dim = {
             width: $template.width() - $template[0].clientWidth,
@@ -76350,16 +76450,16 @@ the specific language governing permissions and limitations under the Apache Lic
     }
 
     /**
-     * Splits the string into an array of values, trimming each value. An empty array is returned for nulls or empty
+     * Splits the string into an array of values, transforming each value. An empty array is returned for nulls or empty
      * strings
      * @param string
      * @param separator
      */
-    function splitVal(string, separator) {
+    function splitVal(string, separator, transform) {
         var val, i, l;
         if (string === null || string.length < 1) return [];
         val = string.split(separator);
-        for (i = 0, l = val.length; i < l; i = i + 1) val[i] = $.trim(val[i]);
+        for (i = 0, l = val.length; i < l; i = i + 1) val[i] = transform(val[i]);
         return val;
     }
 
@@ -76501,7 +76601,7 @@ the specific language governing permissions and limitations under the Apache Lic
                 whiteSpace: "nowrap"
             });
             sizer.attr("class","select2-sizer");
-            $("body").append(sizer);
+            $(document.body).append(sizer);
         }
         sizer.text(e.val());
         return sizer.width();
@@ -76640,7 +76740,7 @@ the specific language governing permissions and limitations under the Apache Lic
                             hasError: true,
                             jqXHR: jqXHR,
                             textStatus: textStatus,
-                            errorThrown: errorThrown,
+                            errorThrown: errorThrown
                         };
 
                         query.callback(results);
@@ -76889,12 +76989,15 @@ the specific language governing permissions and limitations under the Apache Lic
 
             this.container = this.createContainer();
 
-            this.liveRegion = $("<span>", {
-                    role: "status",
-                    "aria-live": "polite"
-                })
-                .addClass("select2-hidden-accessible")
-                .appendTo(document.body);
+            this.liveRegion = $('.select2-hidden-accessible');
+            if (this.liveRegion.length == 0) {
+                this.liveRegion = $("<span>", {
+                        role: "status",
+                        "aria-live": "polite"
+                    })
+                    .addClass("select2-hidden-accessible")
+                    .appendTo(document.body);
+            }
 
             this.containerId="s2id_"+(opts.element.attr("id") || "autogen"+nextUid());
             this.containerEventName= this.containerId
@@ -76904,7 +77007,7 @@ the specific language governing permissions and limitations under the Apache Lic
 
             this.container.attr("title", opts.element.attr("title"));
 
-            this.body = $("body");
+            this.body = $(document.body);
 
             syncCssClasses(this.container, this.opts.element, this.opts.adaptContainerCssClass);
 
@@ -77040,9 +77143,11 @@ the specific language governing permissions and limitations under the Apache Lic
 
             this.close();
 
-            if (element.length && element[0].detachEvent) {
+            if (element.length && element[0].detachEvent && self._sync) {
                 element.each(function () {
-                    this.detachEvent("onpropertychange", self._sync);
+                    if (self._sync) {
+                        this.detachEvent("onpropertychange", self._sync);
+                    }
                 });
             }
             if (this.propertyObserver) {
@@ -77056,7 +77161,7 @@ the specific language governing permissions and limitations under the Apache Lic
                 select2.liveRegion.remove();
                 select2.dropdown.remove();
                 element
-                    .removeClass("select2-offscreen")
+                    .show()
                     .removeData("select2")
                     .off(".select2")
                     .prop("autofocus", this.autofocus || false);
@@ -77248,7 +77353,7 @@ the specific language governing permissions and limitations under the Apache Lic
                         if (opts.initSelection === undefined) {
                             opts.initSelection = function (element, callback) {
                                 var data = [];
-                                $(splitVal(element.val(), opts.separator)).each(function () {
+                                $(splitVal(element.val(), opts.separator, opts.transformVal)).each(function () {
                                     var obj = { id: this, text: this },
                                         tags = opts.tags;
                                     if ($.isFunction(tags)) tags=tags();
@@ -77303,11 +77408,15 @@ the specific language governing permissions and limitations under the Apache Lic
                 if (readonly === undefined) readonly = false;
                 this.readonly(readonly);
 
-                syncCssClasses(this.container, this.opts.element, this.opts.adaptContainerCssClass);
-                this.container.addClass(evaluate(this.opts.containerCssClass, this.opts.element));
+                if (this.container) {
+                    syncCssClasses(this.container, this.opts.element, this.opts.adaptContainerCssClass);
+                    this.container.addClass(evaluate(this.opts.containerCssClass, this.opts.element));
+                }
 
-                syncCssClasses(this.dropdown, this.opts.element, this.opts.adaptDropdownCssClass);
-                this.dropdown.addClass(evaluate(this.opts.dropdownCssClass, this.opts.element));
+                if (this.dropdown) {
+                    syncCssClasses(this.dropdown, this.opts.element, this.opts.adaptDropdownCssClass);
+                    this.dropdown.addClass(evaluate(this.opts.dropdownCssClass, this.opts.element));
+                }
 
             });
 
@@ -77412,9 +77521,10 @@ the specific language governing permissions and limitations under the Apache Lic
         // abstract
         positionDropdown: function() {
             var $dropdown = this.dropdown,
-                offset = this.container.offset(),
-                height = this.container.outerHeight(false),
-                width = this.container.outerWidth(false),
+                container = this.container,
+                offset = container.offset(),
+                height = container.outerHeight(false),
+                width = container.outerWidth(false),
                 dropHeight = $dropdown.outerHeight(false),
                 $window = $(window),
                 windowWidth = $window.width(),
@@ -77426,7 +77536,12 @@ the specific language governing permissions and limitations under the Apache Lic
                 enoughRoomBelow = dropTop + dropHeight <= viewportBottom,
                 enoughRoomAbove = (offset.top - dropHeight) >= $window.scrollTop(),
                 dropWidth = $dropdown.outerWidth(false),
-                enoughRoomOnRight = dropLeft + dropWidth <= viewPortRight,
+                enoughRoomOnRight = function() {
+                    return dropLeft + dropWidth <= viewPortRight;
+                },
+                enoughRoomOnLeft = function() {
+                    return offset.left + viewPortRight + container.outerWidth(false)  > dropWidth;
+                },
                 aboveNow = $dropdown.hasClass("select2-drop-above"),
                 bodyOffset,
                 above,
@@ -77461,7 +77576,6 @@ the specific language governing permissions and limitations under the Apache Lic
                 dropTop = offset.top + height;
                 dropLeft = offset.left;
                 dropWidth = $dropdown.outerWidth(false);
-                enoughRoomOnRight = dropLeft + dropWidth <= viewPortRight;
                 $dropdown.show();
 
                 // fix so the cursor does not move to the left within the search-textbox in IE
@@ -77476,7 +77590,6 @@ the specific language governing permissions and limitations under the Apache Lic
                 dropWidth = $dropdown.outerWidth(false) + (resultsListNode.scrollHeight === resultsListNode.clientHeight ? 0 : scrollBarDimensions.width);
                 dropWidth > width ? width = dropWidth : dropWidth = width;
                 dropHeight = $dropdown.outerHeight(false);
-                enoughRoomOnRight = dropLeft + dropWidth <= viewPortRight;
             }
             else {
                 this.container.removeClass('select2-drop-auto-width');
@@ -77492,7 +77605,7 @@ the specific language governing permissions and limitations under the Apache Lic
                 dropLeft -= bodyOffset.left;
             }
 
-            if (!enoughRoomOnRight) {
+            if (!enoughRoomOnRight() && enoughRoomOnLeft()) {
                 dropLeft = offset.left + this.container.outerWidth(false) - dropWidth;
             }
 
@@ -77581,7 +77694,7 @@ the specific language governing permissions and limitations under the Apache Lic
 
             // create the dropdown mask if doesn't already exist
             mask = $("#select2-drop-mask");
-            if (mask.length == 0) {
+            if (mask.length === 0) {
                 mask = $(document.createElement("div"));
                 mask.attr("id","select2-drop-mask").attr("class","select2-drop-mask");
                 mask.hide();
@@ -77715,7 +77828,7 @@ the specific language governing permissions and limitations under the Apache Lic
                 }
             }
 
-            rb = results.offset().top + results.outerHeight(true);
+            rb = results.offset().top + results.outerHeight(false);
             if (hb > rb) {
                 results.scrollTop(results.scrollTop() + (hb - rb));
             }
@@ -77838,7 +77951,7 @@ the specific language governing permissions and limitations under the Apache Lic
                     self.postprocessResults(data, false, false);
 
                     if (data.more===true) {
-                        more.detach().appendTo(results).text(evaluate(self.opts.formatLoadMore, self.opts.element, page+1));
+                        more.detach().appendTo(results).html(self.opts.escapeMarkup(evaluate(self.opts.formatLoadMore, self.opts.element, page+1)));
                         window.setTimeout(function() { self.loadMoreIfNeeded(); }, 10);
                     } else {
                         more.remove();
@@ -77891,7 +78004,7 @@ the specific language governing permissions and limitations under the Apache Lic
                     self.liveRegion.text(results.text());
                 }
                 else {
-                    self.liveRegion.text(self.opts.formatMatches(results.find('.select2-result-selectable').length));
+                    self.liveRegion.text(self.opts.formatMatches(results.find('.select2-result-selectable:not(".select2-selected")').length));
                 }
             }
 
@@ -78286,6 +78399,7 @@ the specific language governing permissions and limitations under the Apache Lic
             this.focusser.attr("id", "s2id_autogen"+idSuffix);
 
             elementLabel = $("label[for='" + this.opts.element.attr("id") + "']");
+            this.opts.element.focus(this.bind(function () { this.focus(); }));
 
             this.focusser.prev()
                 .text(elementLabel.text())
@@ -78390,11 +78504,17 @@ the specific language governing permissions and limitations under the Apache Lic
             }));
 
             selection.on("mousedown touchstart", "abbr", this.bind(function (e) {
-                if (!this.isInterfaceEnabled()) return;
+                if (!this.isInterfaceEnabled()) {
+                    return;
+                }
+
                 this.clear();
                 killEventImmediately(e);
                 this.close();
-                this.selection.focus();
+
+                if (this.selection) {
+                    this.selection.focus();
+                }
             }));
 
             selection.on("mousedown touchstart", this.bind(function (e) {
@@ -78443,7 +78563,7 @@ the specific language governing permissions and limitations under the Apache Lic
             }));
 
             this.initContainerWidth();
-            this.opts.element.addClass("select2-offscreen");
+            this.opts.element.hide();
             this.setPlaceholder();
 
         },
@@ -78772,7 +78892,6 @@ the specific language governing permissions and limitations under the Apache Lic
                 self=this;
 
             // TODO validate placeholder is a string if specified
-
             if (opts.element.get(0).tagName.toLowerCase() === "select") {
                 // install the selection initializer
                 opts.initSelection = function (element, callback) {
@@ -78787,7 +78906,7 @@ the specific language governing permissions and limitations under the Apache Lic
             } else if ("data" in opts) {
                 // install default initSelection when applied to hidden input and data is local
                 opts.initSelection = opts.initSelection || function (element, callback) {
-                    var ids = splitVal(element.val(), opts.separator);
+                    var ids = splitVal(element.val(), opts.separator, opts.transformVal);
                     //search in data by array of ids, storing matching items in a list
                     var matches = [];
                     opts.query({
@@ -78864,8 +78983,7 @@ the specific language governing permissions and limitations under the Apache Lic
             this.selection = selection = this.container.find(selector);
 
             var _this = this;
-            this.selection.on("click", ".select2-search-choice:not(.select2-locked)", function (e) {
-                //killEvent(e);
+            this.selection.on("click", ".select2-container:not(.select2-container-disabled) .select2-search-choice:not(.select2-locked)", function (e) {
                 _this.search[0].focus();
                 _this.selectChoice($(this));
             });
@@ -78876,6 +78994,7 @@ the specific language governing permissions and limitations under the Apache Lic
             this.search.prev()
                 .text($("label[for='" + this.opts.element.attr("id") + "']").text())
                 .attr('for', this.search.attr('id'));
+            this.opts.element.focus(this.bind(function () { this.focus(); }));
 
             this.search.on("input paste", this.bind(function() {
                 if (this.search.attr('placeholder') && this.search.val().length == 0) return;
@@ -79027,7 +79146,7 @@ the specific language governing permissions and limitations under the Apache Lic
             }));
 
             this.initContainerWidth();
-            this.opts.element.addClass("select2-offscreen");
+            this.opts.element.hide();
 
             // set the placeholder if necessary
             this.clearSearch();
@@ -79236,7 +79355,7 @@ the specific language governing permissions and limitations under the Apache Lic
 
             formatted=this.opts.formatSelection(data, choice.find("div"), this.opts.escapeMarkup);
             if (formatted != undefined) {
-                choice.find("div").replaceWith("<div>"+formatted+"</div>");
+                choice.find("div").replaceWith($("<div></div>").html(formatted));
             }
             cssClass=this.opts.formatSelectionCssClass(data, choice.find("div"));
             if (cssClass != undefined) {
@@ -79334,7 +79453,7 @@ the specific language governing permissions and limitations under the Apache Lic
                 }
             });
 
-            if (this.highlight() == -1 && noHighlightUpdate !== false){
+            if (this.highlight() == -1 && noHighlightUpdate !== false && this.opts.closeOnSelect === true){
                 self.highlight(0);
             }
 
@@ -79391,7 +79510,7 @@ the specific language governing permissions and limitations under the Apache Lic
                 return val === null ? [] : val;
             } else {
                 val = this.opts.element.val();
-                return splitVal(val, this.opts.separator);
+                return splitVal(val, this.opts.separator, this.opts.transformVal);
             }
         },
 
@@ -79421,7 +79540,7 @@ the specific language governing permissions and limitations under the Apache Lic
                     if (equal(this.opts.id(current[i]), this.opts.id(old[j]))) {
                         current.splice(i, 1);
                         if(i>0){
-                        	i--;
+                            i--;
                         }
                         old.splice(j, 1);
                         j--;
@@ -79604,11 +79723,14 @@ the specific language governing permissions and limitations under the Apache Lic
         dropdownCssClass: "",
         formatResult: function(result, container, query, escapeMarkup) {
             var markup=[];
-            markMatch(result.text, query.term, markup, escapeMarkup);
+            markMatch(this.text(result), query.term, markup, escapeMarkup);
             return markup.join("");
         },
+        transformVal: function(val) {
+            return $.trim(val);
+        },
         formatSelection: function (data, container, escapeMarkup) {
-            return data ? escapeMarkup(data.text) : undefined;
+            return data ? escapeMarkup(this.text(data)) : undefined;
         },
         sortResults: function (results, container, query) {
             return results;
@@ -79620,6 +79742,17 @@ the specific language governing permissions and limitations under the Apache Lic
         maximumInputLength: null,
         maximumSelectionSize: 0,
         id: function (e) { return e == undefined ? null : e.id; },
+        text: function (e) {
+          if (e && this.data && this.data.text) {
+            if ($.isFunction(this.data.text)) {
+              return this.data.text(e);
+            } else {
+              return e[this.data.text];
+            }
+          } else {
+            return e.text;
+          }
+        },
         matcher: function(term, text) {
             return stripDiacritics(''+text).toUpperCase().indexOf(stripDiacritics(''+term).toUpperCase()) >= 0;
         },
@@ -79663,7 +79796,7 @@ the specific language governing permissions and limitations under the Apache Lic
          formatInputTooLong: function (input, max) { var n = input.length - max; return "Please delete " + n + " character" + (n == 1 ? "" : "s"); },
          formatSelectionTooBig: function (limit) { return "You can only select " + limit + " item" + (limit == 1 ? "" : "s"); },
          formatLoadMore: function (pageNumber) { return "Loading more results…"; },
-         formatSearching: function () { return "Searching…"; },
+         formatSearching: function () { return "Searching…"; }
     };
 
     $.extend($.fn.select2.defaults, $.fn.select2.locales['en']);
@@ -85442,6 +85575,6 @@ if (typeof sinon == "undefined") {
   return sinon;
 }));
 
-;eval("define(\"ember-select-2/components/select-2\", \n  [\"ember\",\"exports\"],\n  function(__dependency1__, __exports__) {\n    \"use strict\";\n    var Ember = __dependency1__[\"default\"];\n\n    var get = Ember.get;\n    var run = Ember.run;\n\n    /**\n     * Ember select-2 component wrapping the jQuery select2 plugin while\n     * respecting Ember data bindings and getter/setter methods on the content.\n     *\n     * Terminology:\n     *  - Value: The currently selected value(s). Propagated to controllers etc.\n     *    through the \"value=...\"\" binding. Types:\n     *    - Object: when using select-2 without any further configuration\n     *    - Array of Objects: when using select-2 with \"multiple=true\"\n     *    - Mixed: when using select-2 with \"optionValuePath=...\"\n     *    - Array of Mixed: when using select-2 with \"multiple=true\" and\n     *      \"optionValuePath=...\"\n     *\n     *  - Content: Array of Objects used to present to the user for choosing the\n     *    selected values. \"content\" cannot be an Array of Strings, the Objects are\n     *    expected to have an \"id\" and a property to be used as the label (by default,\n     *    it is \"text\", but it can be overwritten it via \"optionLabelPath\"). These\n     *    properties can be computed properties or just plain JavaScript values.\n     */\n    var Select2Component = Ember.Component.extend({\n      tagName: \"input\",\n      classNames: [\"form-control\"],\n      classNameBindings: [\"inputSize\"],\n      attributeBindings: [\"style\"],\n      style: \"display: hidden;\",\n\n      // Bindings that may be overwritten in the template\n      inputSize: \"input-md\",\n      cssClass: null,\n      optionIdPath: \"id\",\n      optionValuePath: null,\n      optionLabelPath: \'text\',\n      optionHeadlinePath: \'text\',\n      optionDescriptionPath: \'description\',\n      placeholder: null,\n      multiple: false,\n      allowClear: false,\n      enabled: true,\n      query: null,\n      typeaheadSearchingText: \'Searching…\',\n      typeaheadNoMatchesText: \'No matches found\',\n      typeaheadErrorText: \'Loading failed\',\n      searchEnabled: true,\n      minimumInputLength: null,\n      maximumInputLength: null,\n\n      // internal state\n      _hasSelectedMissingItems: false,\n      _hasPendingContentPromise: Ember.computed.alias(\'content.isPending\'),\n      _hasFailedContentPromise: Ember.computed.alias(\'content.isRejected\'),\n      _hasPendingValuePromise: Ember.computed.alias(\'value.isPending\'),\n      _hasFailedValuePromise: Ember.computed.alias(\'value.isRejected\'),\n      _typeaheadMode: Ember.computed.bool(\'query\'),\n\n      didInsertElement: function() {\n        var self = this,\n            options = {},\n            optionIdPath = this.get(\'optionIdPath\'),\n            optionLabelPath = this.get(\'optionLabelPath\'),\n            optionHeadlinePath = this.get(\'optionHeadlinePath\'),\n            optionDescriptionPath = this.get(\'optionDescriptionPath\'),\n            content = this.get(\'content\');\n\n\n        // ensure select2 is loaded\n        Ember.assert(\"select2 has to exist on Ember.$.fn.select2\", typeof Ember.$.fn.select2 === \"function\");\n\n        // setup\n        options.placeholder = this.get(\'placeholder\');\n        options.multiple = this.get(\'multiple\');\n        options.allowClear = this.get(\'allowClear\');\n        options.minimumResultsForSearch = this.get(\'searchEnabled\') ? 0 : -1 ;\n\n        options.minimumInputLength = this.get(\'minimumInputLength\');\n        options.maximumInputLength = this.get(\'maximumInputLength\');\n\n        // override select2\'s default id fetching behavior\n        options.id = (function(e) {\n          return (e === undefined) ? null : get(e, optionIdPath);\n        });\n\n        // allowClear is only allowed with placeholder\n        Ember.assert(\"To use allowClear, you have to specify a placeholder\", !options.allowClear || options.placeholder);\n\n        // search can\'t be disabled for multiple selection mode\n        var illegalSearchInMultipleMode = options.multiple && !this.get(\'searchEnabled\');\n        Ember.assert(\"Search field can\'t be disabled for multiple selection mode\", !illegalSearchInMultipleMode);\n\n        /*\n          Formatting functions that ensure that the passed content is escaped in\n          order to prevent XSS vulnerabilities. Escaping can be avoided by passing\n          Handlebars.SafeString as \"text\", \"headline\" or \"description\" values.\n\n          Generates the html used in the dropdown list (and is implemented to\n          include the description html if available).\n         */\n        options.formatResult = function(item) {\n          if (!item) {\n            return;\n          }\n\n          var output,\n              id = get(item, optionIdPath),\n              text = get(item, optionLabelPath),\n              headline = get(item, optionHeadlinePath),\n              description = get(item, optionDescriptionPath);\n\n          if (item.children) {\n            output = Ember.Handlebars.Utils.escapeExpression(headline);\n          } else {\n            output = Ember.Handlebars.Utils.escapeExpression(text);\n          }\n\n          // only for \"real items\" (no group headers) that have a description\n          if (id && description) {\n            output += \" <span class=\\\"text-muted\\\">\" +\n              Ember.Handlebars.Utils.escapeExpression(description) + \"</span>\";\n          }\n\n          return output;\n        };\n\n        /*\n          Generates the html used in the closed select input, displaying the\n          currently selected element(s). Works like \"formatResult\" but\n          produces shorter output by leaving out the description.\n         */\n        options.formatSelection = function(item) {\n          if (!item) {\n            return;\n          }\n\n          var text = get(item, optionLabelPath);\n\n          // escape text unless it\'s passed as a Handlebars.SafeString\n          return Ember.Handlebars.Utils.escapeExpression(text);\n        };\n\n        /*\n          Provides a list of items that should be displayed for the current query\n          term. Uses the default select2 matcher (which handles diacritics) with the\n          Ember compatible getter method for optionLabelPath.\n         */\n        options.query = function(query) {\n          var select2 = this;\n\n          if (self.get(\'_typeaheadMode\')) {\n            var deferred = Ember.RSVP.defer(\'select2#query: \' + query.term);\n\n            self.sendAction(\'query\', query, deferred);\n\n            deferred.promise.then(function(data) {\n              if (data instanceof Ember.ArrayProxy) {\n                data = data.toArray();\n              }\n              query.callback({\n                results: data\n              });\n            }, function(reason) {\n              query.callback({\n                hasError: true,\n                errorThrown: reason\n              });\n            });\n          } else {\n            Ember.assert(\"select2 has no content!\", self.get(\'content\'));\n\n            var filteredContent = self.get(\"content\").reduce(function(results, item) {\n              // items may contain children, so filter them, too\n              var filteredChildren = [];\n\n              if (item.children) {\n                filteredChildren = item.children.reduce(function(children, child) {\n                  if (select2.matcher(query.term, get(child, optionLabelPath)) || select2.matcher(query.term, get(child, optionHeadlinePath))) {\n                    children.push(child);\n                  }\n                  return children;\n                }, []);\n              }\n\n              // apply the regular matcher\n              if (select2.matcher(query.term, get(item, optionLabelPath)) || select2.matcher(query.term, get(item, optionHeadlinePath))) {\n                // keep this item either if itself matches\n                results.push(item);\n              } else if (filteredChildren.length) {\n                // or it has children that matched the term\n                var result = Ember.$.extend({}, item, { children: filteredChildren });\n                results.push(result);\n              }\n              return results;\n            }, []);\n\n            query.callback({\n              results: filteredContent\n            });\n          }\n        };\n\n        /*\n          Supplies the string used when searching for options, can be set via\n          `typeaheadSearchingText`\n         */\n        options.formatSearching = function() {\n          var text = self.get(\'typeaheadSearchingText\');\n\n          return Ember.String.htmlSafe(text);\n        };\n\n        /*\n          Format the no matches message, substituting the %@ placeholder with the\n          html-escaped user input\n         */\n        options.formatNoMatches = function(term) {\n          var text = self.get(\'typeaheadNoMatchesText\');\n          if (text instanceof Ember.Handlebars.SafeString) {\n            text = text.string;\n          }\n\n          term = Ember.Handlebars.Utils.escapeExpression(term);\n\n          return Ember.String.htmlSafe(Ember.String.fmt(text, term));\n        };\n\n        /*\n          Format the error message, substituting the %@ placeholder with the promise\n          rejection reason\n         */\n        options.formatAjaxError = function(jqXHR, textStatus, errorThrown) {\n          var text = self.get(\'typeaheadErrorText\');\n\n          return Ember.String.htmlSafe(Ember.String.fmt(text, errorThrown));\n        };\n\n        /*\n          Maps \"value\" -> \"object\" when using select2 with \"optionValuePath\" set,\n          and one time directly when setting up the select2 plugin even without \"oVP\".\n          (but with empty value, which will just skip the method)\n\n          Provides an object or an array of objects (depending on \"multiple\") that\n          are referenced by the current select2 \"val\".\n\n          When there are keys that can not be matched to objects, the select2 input\n          will be disabled and a warning will be printed on the console.\n          This is important in case the \"content\" has yet to be loaded but the\n          \"value\" is already set and must not be accidentally changed because the\n          inout cannot yet display all the options that are required.\n\n          To disable this behaviour, remove those keys from \"value\" that can\'t be\n          matched by objects from \"content\".\n         */\n        options.initSelection = function(element, callback) {\n          var value = element.val(),\n              content = self.get(\"content\"),\n              contentIsArrayProxy = Ember.ArrayProxy.detectInstance(content),\n              multiple = self.get(\"multiple\"),\n              optionValuePath = self.get(\"optionValuePath\");\n\n          if (!value || !value.length) {\n            return callback([]);\n          }\n\n          // this method should not be needed without the optionValuePath option\n          // but make sure there is an appropriate error just in case.\n          Ember.assert(\"select2#initSelection has been called without an \\\"\" +\n            \"optionValuePath\\\" set.\", optionValuePath);\n\n          Ember.assert(\"select2#initSelection can not map string values to full objects \" +\n            \"in typeahead mode. Please open a github issue if you have questions to this.\",\n            !self.get(\'_typeaheadMode\'));\n\n\n          var values = value.split(\",\"),\n              filteredContent = [];\n\n          // for every object, check if its optionValuePath is in the selected\n          // values array and save it to the right position in filteredContent\n          var contentLength = get(content, \'length\'),\n              unmatchedValues = values.length,\n              matchIndex;\n\n          // START loop over content\n          for (var i = 0; i < contentLength; i++) {\n            var item = contentIsArrayProxy ? content.objectAt(i) : content[i];\n            matchIndex = -1;\n\n            if (item.children && item.children.length) {\n              // take care of either nested data...\n              for (var c = 0; c < item.children.length; c++) {\n                var child = item.children[c];\n                matchIndex = values.indexOf(\"\" + get(child, optionValuePath));\n                if (matchIndex !== -1) {\n                  filteredContent[matchIndex] = child;\n                  unmatchedValues--;\n                }\n                // break loop if all values are found\n                if (unmatchedValues === 0) {\n                  break;\n                }\n              }\n            } else {\n              // ...or flat data structure: try to match simple item\n              matchIndex = values.indexOf(\"\" + get(item, optionValuePath));\n              if (matchIndex !== -1) {\n                filteredContent[matchIndex] = item;\n                unmatchedValues--;\n              }\n              // break loop if all values are found\n              if (unmatchedValues === 0) {\n                break;\n              }\n            }\n          }\n          // END loop over content\n\n          if (unmatchedValues === 0) {\n            self.set(\'_hasSelectedMissingItems\', false);\n          } else {\n            // disable the select2 element if there are keys left in the values\n            // array that were not matched to an object\n            self.set(\'_hasSelectedMissingItems\', true);\n\n            Ember.warn(\"select2#initSelection was not able to map each \\\"\" +\n              optionValuePath +\"\\\" to an object from \\\"content\\\". The remaining \" +\n              \"keys are: \" + values + \". The input will be disabled until a) the \" +\n              \"desired objects is added to the \\\"content\\\" array or b) the \" +\n              \"\\\"value\\\" is changed.\", !values.length);\n          }\n\n          if (multiple) {\n            // return all matched objects\n            return callback(filteredContent);\n          } else {\n            // only care about the first match in single selection mode\n            return callback(filteredContent.get(\'firstObject\'));\n          }\n        };\n\n        /*\n          Forward a custom css class to the components container and dropdown.\n          The value will be read from the `cssClass` binding\n         */\n        options.containerCssClass = options.dropdownCssClass = function() {\n          return self.get(\'cssClass\') || \'\';\n        };\n\n        this._select = this.$().select2(options);\n\n        this._select.on(\"change\", run.bind(this, function() {\n          // grab currently selected data from select plugin\n          var data = this._select.select2(\"data\");\n          // call our callback for further processing\n          this.selectionChanged(data);\n        }));\n\n        this.addObserver(\'content.[]\', this.valueChanged);\n        this.addObserver(\'content.@each.\' + optionLabelPath, this.valueChanged);\n        this.addObserver(\'content.@each.\' + optionHeadlinePath, this.valueChanged);\n        this.addObserver(\'content.@each.\' + optionDescriptionPath, this.valueChanged);\n        this.addObserver(\'value\', this.valueChanged);\n\n        // trigger initial data sync to set select2 to the external \"value\"\n        this.valueChanged();\n\n        // eventually disable input when content is PromiseProxy\n        if (Ember.PromiseProxyMixin.detect(content)) {\n          // enabling/siabling is done via binding to _hasPendingContentPromise\n          // provide error for rejected promise, though.\n          content.then(null, function (reason) {\n            Ember.warn(\"select2: content promise was reject with reason \" + reason +\n              \". Recovering from this is not (yet) implemented.\");\n          });\n        }\n\n        this.watchDisabled();\n      },\n\n      /**\n       * Teardown to prevent memory leaks\n       */\n      willDestroyElement: function() {\n        // If an assertion caused the component not to render, we can\'t remove it from the dom.\n        if(this._select) {\n          this._select.off(\"change\");\n          this._select.select2(\"destroy\");\n        }\n\n        this.removeObserver(\'content.[]\', this.valueChanged);\n        this.removeObserver(\n          \'content.@each.\' + this.get(\'optionLabelPath\'),\n          this.valueChanged\n        );\n        this.removeObserver(\n          \'content.@each.\' + this.get(\'optionHeadlinePath\'),\n          this.valueChanged\n        );\n        this.removeObserver(\n          \'content.@each.\' + this.get(\'optionDescriptionPath\'),\n          this.valueChanged\n        );\n        this.removeObserver(\'value\', this.valueChanged);\n      },\n\n      /**\n       * Respond to selection changes originating from the select2 element. If\n       * select2 is working with full objects just use them to set the value,\n       * use the optionValuePath otherwise.\n       *\n       * @param  {String|Object} data   Currently selected value\n       */\n      selectionChanged: function(data) {\n        var value,\n            multiple = this.get(\"multiple\"),\n            optionValuePath = this.get(\"optionValuePath\");\n\n        // if there is a optionValuePath, don\'t set value to the complete object,\n        // but only the property referred to by optionValuePath\n        if (optionValuePath) {\n          if (multiple) {\n            // data is an array, so use getEach\n            value = data.getEach(optionValuePath);\n          } else {\n            // treat data as a single object\n            value = get(data, optionValuePath);\n          }\n        } else {\n          value = data;\n        }\n\n        this.set(\"value\", value);\n        Ember.run.schedule(\'actions\', this, function() {\n          this.sendAction(\'didSelect\');\n        });\n      },\n\n      /**\n       * Respond to external value changes. If select2 is working with full objects,\n       * use the \"data\" API, otherwise just set the \"val\" property and let the\n       * \"initSelection\" figure out which object was meant by that.\n       */\n      valueChanged: function() {\n        var self = this,\n            value = this.get(\"value\"),\n            optionValuePath = this.get(\"optionValuePath\");\n\n        if (Ember.PromiseProxyMixin.detect(value)) {\n          // schedule re-setting value after promise is settled\n          value.then(function(value) {\n            if (value === null || value === undefined) {\n              self._select.select2(\"val\", null);\n            }\n          }, function(reason) {\n            Ember.warn(\"select2: value promise was reject with reason \" + reason +\n              \". Recovering from this is not (yet) implemented.\");\n          });\n        }\n\n        if (optionValuePath) {\n          // when there is a optionValuePath, the external value is a primitive value\n          // so use the \"val\" method\n          this._select.select2(\"val\", value);\n        } else {\n          // otherwise set the full object via \"data\"\n          this._select.select2(\"data\", value);\n        }\n      },\n\n      /**\n       * Watch properties that determine the disabled state of the input.\n       */\n      watchDisabled: Ember.observer(\n        \'_hasSelectedMissingItems\',\n        \'_hasPendingContentPromise\',\n        \'_hasFailedContentPromise\',\n        \'_hasPendingValuePromise\',\n        \'_hasFailedValuePromise\',\n        \'enabled\',\n        function() {\n          var select = this._select,\n              disabled = this.get(\'_hasSelectedMissingItems\') ||\n                this.get(\'_hasPendingContentPromise\') ||\n                this.get(\'_hasFailedContentPromise\') ||\n                this.get(\'_hasPendingValuePromise\') ||\n                this.get(\'_hasFailedValuePromise\') ||\n                !this.get(\'enabled\');\n\n          if (select) {\n            Ember.run(function() {\n              select.select2(\"readonly\", disabled);\n            });\n          }\n        }\n      )\n    });\n\n    __exports__[\"default\"] = Select2Component;\n  });//# sourceURL=ember-select-2/components/select-2.js");
+;eval("define(\"ember-select-2/components/select-2\", \n  [\"ember\",\"exports\"],\n  function(__dependency1__, __exports__) {\n    \"use strict\";\n    var Ember = __dependency1__[\"default\"];\n\n    var get = Ember.get;\n    var run = Ember.run;\n\n    /**\n     * Ember select-2 component wrapping the jQuery select2 plugin while\n     * respecting Ember data bindings and getter/setter methods on the content.\n     *\n     * Terminology:\n     *  - Value: The currently selected value(s). Propagated to controllers etc.\n     *    through the \"value=...\"\" binding. Types:\n     *    - Object: when using select-2 without any further configuration\n     *    - Array of Objects: when using select-2 with \"multiple=true\"\n     *    - Mixed: when using select-2 with \"optionValuePath=...\"\n     *    - Array of Mixed: when using select-2 with \"multiple=true\" and\n     *      \"optionValuePath=...\"\n     *\n     *  - Content: Array of Objects used to present to the user for choosing the\n     *    selected values. \"content\" cannot be an Array of Strings, the Objects are\n     *    expected to have an \"id\" and a property to be used as the label (by default,\n     *    it is \"text\", but it can be overwritten it via \"optionLabelPath\"). These\n     *    properties can be computed properties or just plain JavaScript values.\n     */\n    var Select2Component = Ember.Component.extend({\n      tagName: \"input\",\n      classNames: [\"form-control\"],\n      classNameBindings: [\"inputSize\"],\n      attributeBindings: [\"style\"],\n      style: Ember.Handlebars.SafeString(\"display: hidden;\"),\n\n      // Bindings that may be overwritten in the template\n      inputSize: \"input-md\",\n      cssClass: null,\n      optionIdPath: \"id\",\n      optionValuePath: null,\n      optionLabelPath: \'text\',\n      optionHeadlinePath: \'text\',\n      optionDescriptionPath: \'description\',\n      placeholder: null,\n      multiple: false,\n      allowClear: false,\n      enabled: true,\n      query: null,\n      typeaheadSearchingText: \'Searching…\',\n      typeaheadNoMatchesText: \'No matches found\',\n      typeaheadErrorText: \'Loading failed\',\n      searchEnabled: true,\n      minimumInputLength: null,\n      maximumInputLength: null,\n\n      // internal state\n      _hasSelectedMissingItems: false,\n      _hasPendingContentPromise: Ember.computed.alias(\'content.isPending\'),\n      _hasFailedContentPromise: Ember.computed.alias(\'content.isRejected\'),\n      _hasPendingValuePromise: Ember.computed.alias(\'value.isPending\'),\n      _hasFailedValuePromise: Ember.computed.alias(\'value.isRejected\'),\n      _typeaheadMode: Ember.computed.bool(\'query\'),\n\n      didInsertElement: function() {\n        var self = this,\n            options = {},\n            optionIdPath = this.get(\'optionIdPath\'),\n            optionLabelPath = this.get(\'optionLabelPath\'),\n            optionHeadlinePath = this.get(\'optionHeadlinePath\'),\n            optionDescriptionPath = this.get(\'optionDescriptionPath\'),\n            content = this.get(\'content\');\n\n\n        // ensure select2 is loaded\n        Ember.assert(\"select2 has to exist on Ember.$.fn.select2\", typeof Ember.$.fn.select2 === \"function\");\n\n        // setup\n        options.placeholder = this.get(\'placeholder\');\n        options.multiple = this.get(\'multiple\');\n        options.allowClear = this.get(\'allowClear\');\n        options.minimumResultsForSearch = this.get(\'searchEnabled\') ? 0 : -1 ;\n\n        options.minimumInputLength = this.get(\'minimumInputLength\');\n        options.maximumInputLength = this.get(\'maximumInputLength\');\n\n        // override select2\'s default id fetching behavior\n        options.id = (function(e) {\n          return (e === undefined) ? null : get(e, optionIdPath);\n        });\n\n        // allowClear is only allowed with placeholder\n        Ember.assert(\"To use allowClear, you have to specify a placeholder\", !options.allowClear || options.placeholder);\n\n        // search can\'t be disabled for multiple selection mode\n        var illegalSearchInMultipleMode = options.multiple && !this.get(\'searchEnabled\');\n        Ember.assert(\"Search field can\'t be disabled for multiple selection mode\", !illegalSearchInMultipleMode);\n\n        /*\n          Formatting functions that ensure that the passed content is escaped in\n          order to prevent XSS vulnerabilities. Escaping can be avoided by passing\n          Handlebars.SafeString as \"text\", \"headline\" or \"description\" values.\n\n          Generates the html used in the dropdown list (and is implemented to\n          include the description html if available).\n         */\n        options.formatResult = function(item) {\n          if (!item) {\n            return;\n          }\n\n          var output,\n              id = get(item, optionIdPath),\n              text = get(item, optionLabelPath),\n              headline = get(item, optionHeadlinePath),\n              description = get(item, optionDescriptionPath);\n\n          if (item.children) {\n            output = Ember.Handlebars.Utils.escapeExpression(headline);\n          } else {\n            output = Ember.Handlebars.Utils.escapeExpression(text);\n          }\n\n          // only for \"real items\" (no group headers) that have a description\n          if (id && description) {\n            output += \" <span class=\\\"text-muted\\\">\" +\n              Ember.Handlebars.Utils.escapeExpression(description) + \"</span>\";\n          }\n\n          return output;\n        };\n\n        /*\n          Generates the html used in the closed select input, displaying the\n          currently selected element(s). Works like \"formatResult\" but\n          produces shorter output by leaving out the description.\n         */\n        options.formatSelection = function(item) {\n          if (!item) {\n            return;\n          }\n\n          var text = get(item, optionLabelPath);\n\n          // escape text unless it\'s passed as a Handlebars.SafeString\n          return Ember.Handlebars.Utils.escapeExpression(text);\n        };\n\n        /*\n          Provides a list of items that should be displayed for the current query\n          term. Uses the default select2 matcher (which handles diacritics) with the\n          Ember compatible getter method for optionLabelPath.\n         */\n        options.query = function(query) {\n          var select2 = this;\n\n          if (self.get(\'_typeaheadMode\')) {\n            var deferred = Ember.RSVP.defer(\'select2#query: \' + query.term);\n\n            self.sendAction(\'query\', query, deferred);\n\n            deferred.promise.then(function(result) {\n              var data = result;\n              var more = false;\n\n              if (result instanceof Ember.ArrayProxy) {\n                data = result.toArray();\n              } else if (!Array.isArray(result)) {\n                if (result.data instanceof Ember.ArrayProxy) {\n                  data = result.data.toArray();\n                } else {\n                  data = result.data;\n                }\n                more = result.more;\n              }\n\n              query.callback({\n                results: data,\n                more: more\n              });\n            }, function(reason) {\n              query.callback({\n                hasError: true,\n                errorThrown: reason\n              });\n            });\n          } else {\n            Ember.assert(\"select2 has no content!\", self.get(\'content\'));\n\n            var filteredContent = self.get(\"content\").reduce(function(results, item) {\n              // items may contain children, so filter them, too\n              var filteredChildren = [];\n\n              if (item.children) {\n                filteredChildren = item.children.reduce(function(children, child) {\n                  if (select2.matcher(query.term, get(child, optionLabelPath)) || select2.matcher(query.term, get(child, optionHeadlinePath))) {\n                    children.push(child);\n                  }\n                  return children;\n                }, []);\n              }\n\n              // apply the regular matcher\n              if (select2.matcher(query.term, get(item, optionLabelPath)) || select2.matcher(query.term, get(item, optionHeadlinePath))) {\n                // keep this item either if itself matches\n                results.push(item);\n              } else if (filteredChildren.length) {\n                // or it has children that matched the term\n                var result = Ember.$.extend({}, item, { children: filteredChildren });\n                results.push(result);\n              }\n              return results;\n            }, []);\n\n            query.callback({\n              results: filteredContent\n            });\n          }\n        };\n\n        /*\n          Supplies the string used when searching for options, can be set via\n          `typeaheadSearchingText`\n         */\n        options.formatSearching = function() {\n          var text = self.get(\'typeaheadSearchingText\');\n\n          return Ember.String.htmlSafe(text);\n        };\n\n        /*\n          Format the no matches message, substituting the %@ placeholder with the\n          html-escaped user input\n         */\n        options.formatNoMatches = function(term) {\n          var text = self.get(\'typeaheadNoMatchesText\');\n          if (text instanceof Ember.Handlebars.SafeString) {\n            text = text.string;\n          }\n\n          term = Ember.Handlebars.Utils.escapeExpression(term);\n\n          return Ember.String.htmlSafe(Ember.String.fmt(text, term));\n        };\n\n        /*\n          Format the error message, substituting the %@ placeholder with the promise\n          rejection reason\n         */\n        options.formatAjaxError = function(jqXHR, textStatus, errorThrown) {\n          var text = self.get(\'typeaheadErrorText\');\n\n          return Ember.String.htmlSafe(Ember.String.fmt(text, errorThrown));\n        };\n\n        /*\n          Maps \"value\" -> \"object\" when using select2 with \"optionValuePath\" set,\n          and one time directly when setting up the select2 plugin even without \"oVP\".\n          (but with empty value, which will just skip the method)\n\n          Provides an object or an array of objects (depending on \"multiple\") that\n          are referenced by the current select2 \"val\".\n\n          When there are keys that can not be matched to objects, the select2 input\n          will be disabled and a warning will be printed on the console.\n          This is important in case the \"content\" has yet to be loaded but the\n          \"value\" is already set and must not be accidentally changed because the\n          inout cannot yet display all the options that are required.\n\n          To disable this behaviour, remove those keys from \"value\" that can\'t be\n          matched by objects from \"content\".\n         */\n        options.initSelection = function(element, callback) {\n          var value = element.val(),\n              content = self.get(\"content\"),\n              contentIsArrayProxy = Ember.ArrayProxy.detectInstance(content),\n              multiple = self.get(\"multiple\"),\n              optionValuePath = self.get(\"optionValuePath\");\n\n          if (!value || !value.length) {\n            return callback([]);\n          }\n\n          // this method should not be needed without the optionValuePath option\n          // but make sure there is an appropriate error just in case.\n          Ember.assert(\"select2#initSelection has been called without an \\\"\" +\n            \"optionValuePath\\\" set.\", optionValuePath);\n\n          Ember.assert(\"select2#initSelection can not map string values to full objects \" +\n            \"in typeahead mode. Please open a github issue if you have questions to this.\",\n            !self.get(\'_typeaheadMode\'));\n\n\n          var values = value.split(\",\"),\n              filteredContent = [];\n\n          // for every object, check if its optionValuePath is in the selected\n          // values array and save it to the right position in filteredContent\n          var contentLength = get(content, \'length\'),\n              unmatchedValues = values.length,\n              matchIndex;\n\n          // START loop over content\n          for (var i = 0; i < contentLength; i++) {\n            var item = contentIsArrayProxy ? content.objectAt(i) : content[i];\n            matchIndex = -1;\n\n            if (item.children && item.children.length) {\n              // take care of either nested data...\n              for (var c = 0; c < item.children.length; c++) {\n                var child = item.children[c];\n                matchIndex = values.indexOf(\"\" + get(child, optionValuePath));\n                if (matchIndex !== -1) {\n                  filteredContent[matchIndex] = child;\n                  unmatchedValues--;\n                }\n                // break loop if all values are found\n                if (unmatchedValues === 0) {\n                  break;\n                }\n              }\n            }\n            // ...or flat data structure: try to match simple item\n            matchIndex = values.indexOf(\"\" + get(item, optionValuePath));\n            if (matchIndex !== -1) {\n              filteredContent[matchIndex] = item;\n              unmatchedValues--;\n            }\n            // break loop if all values are found\n            if (unmatchedValues === 0) {\n              break;\n            }\n          }\n          // END loop over content\n\n          if (unmatchedValues === 0) {\n            self.set(\'_hasSelectedMissingItems\', false);\n          } else {\n            // disable the select2 element if there are keys left in the values\n            // array that were not matched to an object\n            self.set(\'_hasSelectedMissingItems\', true);\n\n            Ember.warn(\"select2#initSelection was not able to map each \\\"\" +\n              optionValuePath +\"\\\" to an object from \\\"content\\\". The remaining \" +\n              \"keys are: \" + values + \". The input will be disabled until a) the \" +\n              \"desired objects is added to the \\\"content\\\" array or b) the \" +\n              \"\\\"value\\\" is changed.\", !values.length);\n          }\n\n          if (multiple) {\n            // return all matched objects\n            return callback(filteredContent);\n          } else {\n            // only care about the first match in single selection mode\n            return callback(filteredContent.get(\'firstObject\'));\n          }\n        };\n\n        /*\n          Forward a custom css class to the components container and dropdown.\n          The value will be read from the `cssClass` binding\n         */\n        options.containerCssClass = options.dropdownCssClass = function() {\n          return self.get(\'cssClass\') || \'\';\n        };\n\n        this._select = this.$().select2(options);\n\n        this._select.on(\"change\", run.bind(this, function() {\n          // grab currently selected data from select plugin\n          var data = this._select.select2(\"data\");\n          // call our callback for further processing\n          this.selectionChanged(data);\n        }));\n\n        this.addObserver(\'content.[]\', this.valueChanged);\n        this.addObserver(\'content.@each.\' + optionLabelPath, this.valueChanged);\n        this.addObserver(\'content.@each.\' + optionHeadlinePath, this.valueChanged);\n        this.addObserver(\'content.@each.\' + optionDescriptionPath, this.valueChanged);\n        this.addObserver(\'value\', this.valueChanged);\n\n        // trigger initial data sync to set select2 to the external \"value\"\n        this.valueChanged();\n\n        // eventually disable input when content is PromiseProxy\n        if (Ember.PromiseProxyMixin.detect(content)) {\n          // enabling/siabling is done via binding to _hasPendingContentPromise\n          // provide error for rejected promise, though.\n          content.then(null, function (reason) {\n            Ember.warn(\"select2: content promise was reject with reason \" + reason +\n              \". Recovering from this is not (yet) implemented.\");\n          });\n        }\n\n        this.watchDisabled();\n      },\n\n      /**\n       * Teardown to prevent memory leaks\n       */\n      willDestroyElement: function() {\n        // If an assertion caused the component not to render, we can\'t remove it from the dom.\n        if(this._select) {\n          this._select.off(\"change\");\n          this._select.select2(\"destroy\");\n        }\n\n        this.removeObserver(\'content.[]\', this.valueChanged);\n        this.removeObserver(\n          \'content.@each.\' + this.get(\'optionLabelPath\'),\n          this.valueChanged\n        );\n        this.removeObserver(\n          \'content.@each.\' + this.get(\'optionHeadlinePath\'),\n          this.valueChanged\n        );\n        this.removeObserver(\n          \'content.@each.\' + this.get(\'optionDescriptionPath\'),\n          this.valueChanged\n        );\n        this.removeObserver(\'value\', this.valueChanged);\n      },\n\n      /**\n       * Respond to selection changes originating from the select2 element. If\n       * select2 is working with full objects just use them to set the value,\n       * use the optionValuePath otherwise.\n       *\n       * @param  {String|Object} data   Currently selected value\n       */\n      selectionChanged: function(data) {\n        var value,\n            multiple = this.get(\"multiple\"),\n            optionValuePath = this.get(\"optionValuePath\");\n\n        // if there is a optionValuePath, don\'t set value to the complete object,\n        // but only the property referred to by optionValuePath\n        if (optionValuePath) {\n          if (multiple) {\n            // data is an array, so use getEach\n            value = data.getEach(optionValuePath);\n          } else {\n            // treat data as a single object\n            value = get(data, optionValuePath);\n          }\n        } else {\n          value = data;\n        }\n\n        this.set(\"value\", value);\n        Ember.run.schedule(\'actions\', this, function() {\n          this.sendAction(\'didSelect\', value, this);\n        });\n      },\n\n      /**\n       * Respond to external value changes. If select2 is working with full objects,\n       * use the \"data\" API, otherwise just set the \"val\" property and let the\n       * \"initSelection\" figure out which object was meant by that.\n       */\n      valueChanged: function() {\n        var self = this,\n            value = this.get(\"value\"),\n            optionValuePath = this.get(\"optionValuePath\");\n\n        if (Ember.PromiseProxyMixin.detect(value)) {\n          // schedule re-setting value after promise is settled\n          value.then(function(value) {\n            if (value === null || value === undefined) {\n              self._select.select2(\"val\", null);\n            }\n          }, function(reason) {\n            Ember.warn(\"select2: value promise was reject with reason \" + reason +\n              \". Recovering from this is not (yet) implemented.\");\n          });\n        }\n\n        if (optionValuePath) {\n          // when there is a optionValuePath, the external value is a primitive value\n          // so use the \"val\" method\n          this._select.select2(\"val\", value);\n        } else {\n          // otherwise set the full object via \"data\"\n          this._select.select2(\"data\", value);\n        }\n      },\n\n      /**\n       * Watch properties that determine the disabled state of the input.\n       */\n      watchDisabled: Ember.observer(\n        \'_hasSelectedMissingItems\',\n        \'_hasPendingContentPromise\',\n        \'_hasFailedContentPromise\',\n        \'_hasPendingValuePromise\',\n        \'_hasFailedValuePromise\',\n        \'enabled\',\n        function() {\n          var select = this._select,\n              disabled = this.get(\'_hasSelectedMissingItems\') ||\n                this.get(\'_hasPendingContentPromise\') ||\n                this.get(\'_hasFailedContentPromise\') ||\n                this.get(\'_hasPendingValuePromise\') ||\n                this.get(\'_hasFailedValuePromise\') ||\n                !this.get(\'enabled\');\n\n          if (select) {\n            Ember.run(function() {\n              select.select2(\"readonly\", disabled);\n            });\n          }\n        }\n      )\n    });\n\n    __exports__[\"default\"] = Select2Component;\n  });//# sourceURL=ember-select-2/components/select-2.js");
 
 ;eval("define(\"ember-select-2\", [\"ember-select-2/index\",\"exports\"], function(__index__, __exports__) {\n  \"use strict\";\n  Object.keys(__index__).forEach(function(key){\n    __exports__[key] = __index__[key];\n  });\n});\n//# sourceURL=__reexport.js");
