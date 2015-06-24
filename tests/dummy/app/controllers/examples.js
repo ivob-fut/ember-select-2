@@ -2,7 +2,7 @@ import Ember from "ember";
 
 var ExamplesController = Ember.Controller.extend({
   favouritePizza: null,
-  favouritePizzaId: Ember.computed.defaultTo('ham'),
+  favouritePizzaId: Ember.computed.oneWay('ham'),
   favouritePizzas: null,
   favouritePizzaIds: null,
   preselectedPizzaIds: ["ham", "pep", "tex"],
@@ -53,6 +53,19 @@ var ExamplesController = Ember.Controller.extend({
       description: "Cheese overload"
     }
   ],
+
+  disabledPizzas: Ember.A([
+    {
+       id: "1",
+       text: "Margherita",
+       description: "The original italian one"
+     }, {
+       id: "2",
+       text: "Cheese",
+       disabled: true,
+       description: "Can you say Laaame?"
+     }
+  ]),
 
   ingredients: [
     {
